@@ -3,8 +3,11 @@ from typing import List
 import databases
 import sqlalchemy
 from pydantic import BaseModel
+import os
+from dotenv import load_dotenv
 
-DATABASE_URL = "postgresql://glsmgmsmdngzvf:26dc1f9f0320b0c724d44ca50ff7d2c745bbe55e268c80eea0d83ccb620c31c3@ec2-3-93-206-109.compute-1.amazonaws.com:5432/dek8qtfv9rl3f"
+load_dotenv()
+DATABASE_URL = (os.environ["DATABASE"])
 
 database = databases.Database(DATABASE_URL)
 
