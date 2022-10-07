@@ -1,12 +1,12 @@
 import uvicorn
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI
 
 app = FastAPI(debug=True)
 
 @app.get("/")
 
 async def index():
-    return {message:"Hello World!"}
+    return {"Hello World!"}
 
 
 
