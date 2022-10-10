@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from datetime import datetime
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 import databases
@@ -14,12 +15,14 @@ database = databases.Database(DATABASE_URL)
 
 metadata = sqlalchemy.MetaData()
 
-notes = sqlalchemy.Table(
-    "notes",
+files = sqlalchemy.Table(
+    "files",
     metadata,
     sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
-    sqlalchemy.Column("text", sqlalchemy.String),
-    sqlalchemy.Column("completed", sqlalchemy.Boolean),
+    sqlalchemy.Column("name", sqlalchemy.String, nullable=False,),
+    sqlalchemy.Column("size", sqlalchemy.Integer, nullable=False,),
+    sqlalchemy.Column("upload_at", sqlalchemy.String,
+                      nullable=False, default=datetime.now())
 )
 engine = sqlalchemy.create_engine(
     DATABASE_URL
@@ -27,15 +30,15 @@ engine = sqlalchemy.create_engine(
 metadata.create_all(engine)
 
 
-class Notes(BaseModel):
+class Files(BaseModel):
     id: int
-    text: str
-    completed: bool
+    name: str
+    upload_at: str 
 
 
-class NotesIn(BaseModel):
-    text: str
-    completed: bool
+class FilesIn(BaseModel):
+    name: str
+    upload_at: str
 
 
 app = FastAPI()
@@ -59,19 +62,31 @@ async def shutdown():
     await database.disconnect()
 
 
-@app.get("/notes/", response_model=List[Notes])
-async def read_notes():
-    query = notes.select()
+@app.get("/files", response_model=List)
+async def read_files():
+    query = files.select()
     return await database.fetch_all(query)
 
 
-@app.post("/notes/", response_model=Notes)
-async def create_note(note: NotesIn):
-    query = notes.insert().values(text=note.text, completed=note.completed)
+@app.post("/file/upload")
+async def upload_file(arquivo: UploadFile = File(...)):
+    upload_at = datetime.now()
+    query = files.insert().values(name=arquivo.filename, upload_at=str(upload_at))
     last_record_id = await database.execute(query)
-    return {**note.dict(), "id": last_record_id}
+    return {"file": arquivo.filename, "id": last_record_id, "upload_at": upload_at}
 
 
-@app.get("/")
-async def index():
-    return {"Message": "Success"}
+@app.put("/file/{file_id}")
+async def update_file(file_id: int, arquivo: UploadFile = File(...)):
+    upload_at = datetime.now()
+    query = files.update().where(files.columns.id == file_id).values(
+        name=arquivo.filename, upload_at=str(upload_at))
+    await database.execute(query)
+    return {"file": arquivo.filename, "id": file_id, "upload_at": str(upload_at)}
+
+
+@app.delete("/file/delete/{file_id}")
+async def update_file(file_id: int):
+    query = files.delete().where(files.columns.id == file_id)
+    await database.execute(query)
+    return {"message": "the file with id={} deleted successfully".format(file_id)}
