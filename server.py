@@ -120,8 +120,4 @@ async def update_file(file_id: int):
 async def conciliado():
     query = "SELECT * FROM files ORDER BY upload_at DESC LIMIT 5"
     await database.execute(query)
-    # list_users = cur.fetchall()
-    # query = files.select().order_by("upload_at").limit(3)
-    # query = files.select().order_by("upload_at")
-    # await database.execute(query)
     return await database.fetch_all(query)
