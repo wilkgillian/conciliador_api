@@ -81,7 +81,6 @@ async def read_files():
 async def upload_file(arquivo: UploadFile):
     upload_at = datetime.now()
 
-    # bucket = s3. Bucket(bucket_name)
     s3.upload_fileobj(arquivo.file, bucket_name, arquivo.filename)
 
     uploaded_file_url = f"https://{bucket_name}.s3.amazonaws.com/{str(arquivo.filename)}"
@@ -201,16 +200,21 @@ async def conciliado():
         v_cielo_m = row["Valor bruto"]
         if round(v_cielo_m) != round(v_mxm):
             diferenca = round(v_cielo_m, 2) - round(v_mxm, 2)
-            diferenca_cieloxmxm.append([str(index), str(index), v_cielo_m, v_mxm, str(round(diferenca, 2)).replace("-", "")])
+            diferenca_cieloxmxm.append([str(index), str(
+                index), v_cielo_m, v_mxm, str(round(diferenca, 2)).replace("-", "")])
 
     wb.save(filename="teste.xlsx")
-    dif_vendas = pd.read_excel("teste.xlsx", "diferencas_vendas_cieloxsig", dtype="string")
-    dif_recebimentos = pd.read_excel("teste.xlsx", "diferencas_recebimentos_cieloxsig", dtype="string")
-    dif_razao_contabil = pd.read_excel("teste.xlsx", "diferencas_mxm_cielo", dtype="string")
-  
-    d_v = {"dif_vendas_cielo_sig": [dif_vendas], "dif_recebimentos_cielo_sig": [dif_recebimentos], "dif_razao_contabil": [dif_razao_contabil]}
+    dif_vendas = pd.read_excel(
+        "teste.xlsx", "diferencas_vendas_cieloxsig", dtype="string")
+    dif_recebimentos = pd.read_excel(
+        "teste.xlsx", "diferencas_recebimentos_cieloxsig", dtype="string")
+    dif_razao_contabil = pd.read_excel(
+        "teste.xlsx", "diferencas_mxm_cielo", dtype="string")
+
+    d_v = {"dif_vendas_cielo_sig": [dif_vendas], "dif_recebimentos_cielo_sig": [
+        dif_recebimentos], "dif_razao_contabil": [dif_razao_contabil]}
     json_dataframe = pd.DataFrame(d_v).to_json(orient="records")
-    
-    json_obj = str(json_dataframe).replace("\\","")
-    
+
+    json_obj = str(json_dataframe).replace("\\", "")
+
     return json.loads(json_obj)
