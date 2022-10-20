@@ -11,7 +11,9 @@ from sqlalchemy_utils import URLType
 from pydantic import BaseModel
 import os
 import boto3
+from openpyxl.utils.dataframe import dataframe_to_rows
 from dotenv import load_dotenv
+from itertools import islice
 
 load_dotenv()
 DATABASE_URL = (os.environ["DATABASE"])
@@ -162,6 +164,11 @@ async def conciliado():
         grup_mxm), left_on="Data de pagamento", right_on="Data", right_index=True)
 
     wb = openpyxl.Workbook()
+    ws = wb.active
+
+    for r in dataframe_to_rows(df_vendas_cielo, index=True, header=True):
+        ws.append(r)
+
     wb.create_sheet('diferencas_vendas_cieloxsig')
     diferencas_vendas_cieloxsig = wb['diferencas_vendas_cieloxsig']
     diferencas_vendas_cieloxsig.append(
@@ -203,18 +210,35 @@ async def conciliado():
             diferenca_cieloxmxm.append([str(index), str(
                 index), v_cielo_m, v_mxm, str(round(diferenca, 2)).replace("-", "")])
 
-    wb.save(filename="teste.xlsx")
-    dif_vendas = pd.read_excel(
-        "teste.xlsx", "diferencas_vendas_cieloxsig", dtype="string")
-    dif_recebimentos = pd.read_excel(
-        "teste.xlsx", "diferencas_recebimentos_cieloxsig", dtype="string")
-    dif_razao_contabil = pd.read_excel(
-        "teste.xlsx", "diferencas_mxm_cielo", dtype="string")
+    dados_vendas = wb["diferencas_vendas_cieloxsig"].values
+    cols_vendas = next(dados_vendas)[1:]
+    dados_vendas = list(dados_vendas)
+    idx_vendas = [r[0] for r in dados_vendas]
+    dados_vendas = (islice(r, 1, None) for r in dados_vendas)
+    dif_vendas = pd.DataFrame(
+        dados_vendas, index=idx_vendas, columns=cols_vendas).to_json(orient="records")
 
-    d_v = {"dif_vendas_cielo_sig": [dif_vendas], "dif_recebimentos_cielo_sig": [
-        dif_recebimentos], "dif_razao_contabil": [dif_razao_contabil]}
-    json_dataframe = pd.DataFrame(d_v).to_json(orient="records")
+    dados_recebimentos = wb["diferencas_recebimentos_cieloxsig"].values
+    cols_recebimentos = next(dados_recebimentos)[1:]
+    dados_recebimentos = list(dados_recebimentos)
+    idx_recebimentos = [r[0] for r in dados_recebimentos]
+    dados_recebimentos = (islice(r, 1, None) for r in dados_recebimentos)
+    dif_recebimentos = pd.DataFrame(
+        dados_recebimentos, index=idx_recebimentos, columns=cols_recebimentos).to_json(orient="records")
 
-    json_obj = str(json_dataframe).replace("\\", "")
+    dados_mxm = wb["diferencas_mxm_cielo"].values
+    cols_mxm = next(dados_mxm)[1:]
+    dados_mxm = list(dados_mxm)
+    idx_mxm = [r[0] for r in dados_mxm]
+    dados_mxm = (islice(r, 1, None) for r in dados_mxm)
+    dif_razao_contabil = pd.DataFrame(
+        dados_mxm, index=idx_mxm, columns=cols_mxm).to_json(orient="records")
 
-    return json.loads(json_obj)
+    json_vendas = json.loads(str(dif_vendas).replace("\\", ""))
+    json_recebimentos = json.loads(str(dif_recebimentos).replace("\\", ""))
+    json_razao = json.loads(str(dif_razao_contabil).replace("\\", ""))
+
+    json_ob = [{"dif_vendas_cielo_sig": json_vendas, "dif_recebimentos_cielo_sig":
+               json_recebimentos, "dif_razao_contabil": json_razao}]
+
+    return json_ob
