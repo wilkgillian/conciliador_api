@@ -1,4 +1,8 @@
 from datetime import datetime
+from fileinput import filename
+import hashlib
+from io import StringIO
+from unidecode import unidecode
 import json
 import openpyxl
 from fastapi import FastAPI, UploadFile
@@ -85,7 +89,7 @@ async def upload_file(arquivo: UploadFile):
 
     s3.upload_fileobj(arquivo.file, bucket_name, arquivo.filename)
 
-    uploaded_file_url = f"https://{bucket_name}.s3.amazonaws.com/{str(arquivo.filename)}"
+    uploaded_file_url = f"https://{bucket_name}.s3.amazonaws.com/{unidecode(str(arquivo.filename))}"
 
     query = files.insert().values(name=str(arquivo.filename),
                                   file_url=uploaded_file_url, upload_at=str(upload_at))
@@ -101,7 +105,7 @@ async def update_file(file_id: int, arquivo: UploadFile):
 
     s3.upload_fileobj(arquivo.file, bucket_name, arquivo.filename)
 
-    uploaded_file_url = f"https://{bucket_name}.s3.amazonaws.com/{str(arquivo.filename)}"
+    uploaded_file_url = f"https://{bucket_name}.s3.amazonaws.com/{unidecode(str(arquivo.filename))}"
     query = files.update().where(files.columns.id == file_id).values(
         name=arquivo.filename, file_url=uploaded_file_url, upload_at=str(upload_at))
     await database.execute(query)
@@ -134,11 +138,11 @@ async def conciliado():
     df_vendas_cielo = pd.read_excel(vendas_cielo_url_replace, usecols=[
         "Código de autorização", "Valor da venda"])
     df_vendas_sig = pd.read_excel(vendas_sig_url_replace, usecols=[
-        "Aut. de Venda", "Valor Proporcional"])
+        "Data da Venda", "Aut. de Venda", "Valor Proporcional"])
     df_recebimentos_cielo = pd.read_excel(recebimentos_cielo_url_replace, usecols=[
         "Data de pagamento", "Código de autorização", "Valor bruto"])
     df_recebimentos_sig = pd.read_excel(recebimentos_sig_url_replace, usecols=[
-        "Aut. de Venda", "Valor Proporcional"])
+        "Data do Recebimento", "Aut. de Venda", "Valor Proporcional"])
     df_mxm = pd.read_excel(mxm_url_replace, usecols=[
                            'Data', 'Histórico', 'Débito', 'Crédito'], skipfooter=1)
 
@@ -150,8 +154,10 @@ async def conciliado():
         pd.Grouper(key='Código de autorização')).sum()
     grup_recebimentos_sig = df_recebimentos_sig.groupby(
         pd.Grouper(key='Aut. de Venda')).sum()
-    grup_recebimentos_cielo2 = df_recebimentos_cielo.groupby(
-        pd.Grouper(key='Data de pagamento')).sum()
+    grup_recebimentos_sig2 = df_recebimentos_sig.groupby(
+        pd.Grouper(key='Data do Recebimento')).sum()
+    grup_vendas_sig2 = df_vendas_sig.groupby(
+        pd.Grouper(key='Data da Venda')).sum()
     grup_mxm = df_mxm.groupby(pd.Grouper(key="Data")).sum()
 
     vendas_cieloXsig = pd.merge(pd.DataFrame(
@@ -160,8 +166,11 @@ async def conciliado():
     recebimentos_cieloXsig = pd.merge(pd.DataFrame(grup_recebimentos_cielo), pd.DataFrame(
         grup_recebimentos_sig), left_on="Código de autorização", right_on="Aut. de Venda", right_index=True)
 
-    razao_contabilXcielo = pd.merge(pd.DataFrame(grup_recebimentos_cielo2), pd.DataFrame(
-        grup_mxm), left_on="Data de pagamento", right_on="Data", right_index=True)
+    razao_contabilXrecebimentos_sig = pd.merge(pd.DataFrame(grup_recebimentos_sig2), pd.DataFrame(
+        grup_mxm), left_on="Data do Recebimento", right_on="Data", right_index=True)
+
+    razao_contabilXvendas_sig = pd.merge(pd.DataFrame(grup_vendas_sig2), pd.DataFrame(
+        grup_mxm), left_on="Data da Venda", right_on="Data", right_index=True)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -197,18 +206,32 @@ async def conciliado():
                 index), str(
                 index), r_cielo, r_sig, str(round(diferenca, 2)).replace("-", "")])
 
-    wb.create_sheet('diferencas_mxm_cielo')
-    diferenca_cieloxmxm = wb['diferencas_mxm_cielo']
-    diferenca_cieloxmxm.append(
-        ['id', 'data_recebimento', 'valor_cielo', 'valor_mxm', 'diferenca'])
+    wb.create_sheet('diferencas_recebimentos_mxm_sig')
+    diferenca_recebimentos_sigxmxm = wb['diferencas_recebimentos_mxm_sig']
+    diferenca_recebimentos_sigxmxm.append(
+        ['id', 'data_recebimento', 'valor_sig', 'valor_mxm', 'diferenca'])
 
-    for index, row in razao_contabilXcielo.iterrows():
-        v_mxm = row["Crédito"]
-        v_cielo_m = row["Valor bruto"]
-        if round(v_cielo_m) != round(v_mxm):
-            diferenca = round(v_cielo_m, 2) - round(v_mxm, 2)
-            diferenca_cieloxmxm.append([str(index), str(
-                index), v_cielo_m, v_mxm, str(round(diferenca, 2)).replace("-", "")])
+    for index, row in razao_contabilXrecebimentos_sig.iterrows():
+        v_mxm_credito = row["Crédito"]
+        v_sig_recebimento = row["Valor Proporcional"]
+        if round(v_sig_recebimento) != round(v_mxm_credito):
+            diferenca_recebimentos = round(
+                v_sig_recebimento, 2) - round(v_mxm_credito, 2)
+            diferenca_recebimentos_sigxmxm.append([str(index), str(
+                index), v_sig_recebimento, v_mxm_credito, str(round(diferenca_recebimentos, 2)).replace("-", "")])
+
+    wb.create_sheet('diferencas_vendas_mxm_sig')
+    diferenca_vendas_sigxmxm = wb['diferencas_vendas_mxm_sig']
+    diferenca_vendas_sigxmxm.append(
+        ['id', 'data_venda', 'valor_sig', 'valor_mxm', 'diferenca'])
+
+    for index, row in razao_contabilXvendas_sig.iterrows():
+        v_mxm_debito = row["Débito"]
+        v_sig_venda = row["Valor Proporcional"]
+        if round(v_sig_venda) != round(v_mxm_debito):
+            diferenca_vendas = round(v_sig_venda, 2) - round(v_mxm_debito, 2)
+            diferenca_vendas_sigxmxm.append([str(index), str(
+                index), v_sig_venda, v_mxm_debito, str(round(diferenca_vendas, 2)).replace("-", "")])
 
     dados_vendas = wb["diferencas_vendas_cieloxsig"].values
     cols_vendas = next(dados_vendas)[1:]
@@ -226,19 +249,59 @@ async def conciliado():
     dif_recebimentos = pd.DataFrame(
         dados_recebimentos, index=idx_recebimentos, columns=cols_recebimentos).to_json(orient="records")
 
-    dados_mxm = wb["diferencas_mxm_cielo"].values
-    cols_mxm = next(dados_mxm)[1:]
-    dados_mxm = list(dados_mxm)
-    idx_mxm = [r[0] for r in dados_mxm]
-    dados_mxm = (islice(r, 1, None) for r in dados_mxm)
-    dif_razao_contabil = pd.DataFrame(
-        dados_mxm, index=idx_mxm, columns=cols_mxm).to_json(orient="records")
+    dados_recebimentos_sig_mxm = wb["diferencas_recebimentos_mxm_sig"].values
+    cols_mxm = next(dados_recebimentos_sig_mxm)[1:]
+    dados_recebimentos_sig_mxm = list(dados_recebimentos_sig_mxm)
+    idx_mxm = [r[0] for r in dados_recebimentos_sig_mxm]
+    dados_recebimentos_sig_mxm = (islice(r, 1, None)
+                                  for r in dados_recebimentos_sig_mxm)
+    dif_recebimentos_sig_razao_contabil = pd.DataFrame(
+        dados_recebimentos_sig_mxm, index=idx_mxm, columns=cols_mxm).to_json(orient="records")
+
+    dados_vendas_sig_mxm = wb["diferencas_recebimentos_mxm_sig"].values
+    cols_mxm = next(dados_vendas_sig_mxm)[1:]
+    dados_vendas_sig_mxm = list(dados_vendas_sig_mxm)
+    idx_mxm = [r[0] for r in dados_vendas_sig_mxm]
+    dados_vendas_sig_mxm = (islice(r, 1, None) for r in dados_vendas_sig_mxm)
+    dif_recebimentos_sig_razao_contabil = pd.DataFrame(
+        dados_vendas_sig_mxm, index=idx_mxm, columns=cols_mxm).to_json(orient="records")
 
     json_vendas = json.loads(str(dif_vendas).replace("\\", ""))
     json_recebimentos = json.loads(str(dif_recebimentos).replace("\\", ""))
-    json_razao = json.loads(str(dif_razao_contabil).replace("\\", ""))
+    json_recebimentos_razao_sig = json.loads(
+        str(dif_recebimentos_sig_razao_contabil).replace("\\", ""))
+    json_vendas_razao_sig = json.loads(
+        str(dif_recebimentos_sig_razao_contabil).replace("\\", ""))
 
     json_ob = [{"dif_vendas_cielo_sig": json_vendas, "dif_recebimentos_cielo_sig":
-               json_recebimentos, "dif_razao_contabil": json_razao}]
+               json_recebimentos, "dif_recebimentos_sig_mxm": json_recebimentos_razao_sig, "dif_vendas_sig_mxm": json_vendas_razao_sig}]
 
+    # response_file =
+
+    dif_vendas_df = pd.DataFrame(
+        dados_vendas, index=idx_vendas, columns=cols_vendas)
+    dif_recebimentos_df = pd.DataFrame(
+        dados_recebimentos, index=idx_recebimentos, columns=cols_recebimentos)
+    dif_razao_contabil_df = pd.DataFrame(
+        dados_recebimentos_sig_mxm, index=idx_mxm, columns=cols_mxm)
+
+    df_concat = pd.concat(
+        [dif_vendas_df, dif_recebimentos_df, dif_razao_contabil_df])
+    file_name = "diferencas.csv"
+    csv_buffer = StringIO()
+    s3_resource = boto3.resource('s3')
+
+    pd.DataFrame(df_concat).to_csv(csv_buffer)
+
+    s3_resource.Object(bucket_name, file_name).put(Body=csv_buffer.getvalue())
+    # s3.put_object(
+    #     ACL="public",
+    #     Body=excel_buffer.getvalue(),
+    #     Bucket=bucket_name,
+    #     Key=file_name
+    # )
+    # s3.upload_fileobj(hashlib.sha256(excel_buffer).hexdigest(), bucket_name, file_name)
+    # filename, storage_options = s3.upload_fileobj(json_ob, bucket_name, filename))
+
+    # uploaded_file_url = f"https://{bucket_name}.s3.amazonaws.com/{str(arquivo.filename)}"
     return json_ob
