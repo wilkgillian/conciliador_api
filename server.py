@@ -1,6 +1,4 @@
 from datetime import datetime
-from fileinput import filename
-import hashlib
 from io import StringIO
 from unidecode import unidecode
 import json
@@ -250,50 +248,50 @@ async def conciliado():
         dados_recebimentos, index=idx_recebimentos, columns=cols_recebimentos).to_json(orient="records")
 
     dados_recebimentos_sig_mxm = wb["diferencas_recebimentos_mxm_sig"].values
-    cols_mxm = next(dados_recebimentos_sig_mxm)[1:]
+    cols_recebimentos_mxm_sig = next(dados_recebimentos_sig_mxm)[1:]
     dados_recebimentos_sig_mxm = list(dados_recebimentos_sig_mxm)
-    idx_mxm = [r[0] for r in dados_recebimentos_sig_mxm]
+    idx_recebimentos_mxm_sig = [r[0] for r in dados_recebimentos_sig_mxm]
     dados_recebimentos_sig_mxm = (islice(r, 1, None)
                                   for r in dados_recebimentos_sig_mxm)
     dif_recebimentos_sig_razao_contabil = pd.DataFrame(
-        dados_recebimentos_sig_mxm, index=idx_mxm, columns=cols_mxm).to_json(orient="records")
+        dados_recebimentos_sig_mxm, index=idx_recebimentos_mxm_sig, columns=cols_recebimentos_mxm_sig).to_json(orient="records")
 
-    dados_vendas_sig_mxm = wb["diferencas_recebimentos_mxm_sig"].values
-    cols_mxm = next(dados_vendas_sig_mxm)[1:]
+    dados_vendas_sig_mxm = wb["diferencas_vendas_mxm_sig"].values
+    cols_vendas_mxm_sig = next(dados_vendas_sig_mxm)[1:]
     dados_vendas_sig_mxm = list(dados_vendas_sig_mxm)
-    idx_mxm = [r[0] for r in dados_vendas_sig_mxm]
+    idx_vendas_sig_mxm = [r[0] for r in dados_vendas_sig_mxm]
     dados_vendas_sig_mxm = (islice(r, 1, None) for r in dados_vendas_sig_mxm)
-    dif_recebimentos_sig_razao_contabil = pd.DataFrame(
-        dados_vendas_sig_mxm, index=idx_mxm, columns=cols_mxm).to_json(orient="records")
+    dif_vendas_sig_razao_contabil = pd.DataFrame(
+        dados_vendas_sig_mxm, index=idx_vendas_sig_mxm, columns=cols_vendas_mxm_sig).to_json(orient="records")
 
     json_vendas = json.loads(str(dif_vendas).replace("\\", ""))
     json_recebimentos = json.loads(str(dif_recebimentos).replace("\\", ""))
     json_recebimentos_razao_sig = json.loads(
         str(dif_recebimentos_sig_razao_contabil).replace("\\", ""))
     json_vendas_razao_sig = json.loads(
-        str(dif_recebimentos_sig_razao_contabil).replace("\\", ""))
+        str(dif_vendas_sig_razao_contabil).replace("\\", ""))
 
     json_ob = [{"dif_vendas_cielo_sig": json_vendas, "dif_recebimentos_cielo_sig":
                json_recebimentos, "dif_recebimentos_sig_mxm": json_recebimentos_razao_sig, "dif_vendas_sig_mxm": json_vendas_razao_sig}]
 
     # response_file =
 
-    dif_vendas_df = pd.DataFrame(
-        dados_vendas, index=idx_vendas, columns=cols_vendas)
-    dif_recebimentos_df = pd.DataFrame(
-        dados_recebimentos, index=idx_recebimentos, columns=cols_recebimentos)
-    dif_razao_contabil_df = pd.DataFrame(
-        dados_recebimentos_sig_mxm, index=idx_mxm, columns=cols_mxm)
+    # dif_vendas_df = pd.DataFrame(
+    #     dados_vendas, index=idx_vendas, columns=cols_vendas)
+    # dif_recebimentos_df = pd.DataFrame(
+    #     dados_recebimentos, index=idx_recebimentos, columns=cols_recebimentos)
+    # dif_razao_contabil_df = pd.DataFrame(
+    #     dados_recebimentos_sig_mxm, index=idx_mxm, columns=cols_mxm)
 
-    df_concat = pd.concat(
-        [dif_vendas_df, dif_recebimentos_df, dif_razao_contabil_df])
-    file_name = "diferencas.csv"
-    csv_buffer = StringIO()
-    s3_resource = boto3.resource('s3')
+    # df_concat = pd.concat(
+    #     [dif_vendas_df, dif_recebimentos_df, dif_razao_contabil_df])
+    # file_name = "diferencas.csv"
+    # csv_buffer = StringIO()
+    # s3_resource = boto3.resource('s3')
 
-    pd.DataFrame(df_concat).to_csv(csv_buffer)
+    # pd.DataFrame(df_concat).to_csv(csv_buffer)
 
-    s3_resource.Object(bucket_name, file_name).put(Body=csv_buffer.getvalue())
+    # s3_resource.Object(bucket_name, file_name).put(Body=csv_buffer.getvalue())
     # s3.put_object(
     #     ACL="public",
     #     Body=excel_buffer.getvalue(),
